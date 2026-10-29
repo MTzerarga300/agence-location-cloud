@@ -1,0 +1,9 @@
+# Photos envoyées par les agences
+public/uploads/cars/*
+!public/uploads/cars/.gitkeep
+
+# Secrets et fichiers locaux
+.env
+*.log
+.DS_Store
+Thumbs.db
