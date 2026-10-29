@@ -1,18 +1,47 @@
-# Mohamed Tayeb Agency : version premium
+# Agence de location de voitures, conteneurisée
 
-Site de location de voitures à Oran, en PHP 8.2 et MySQL, sans framework.
-Cette version reprend toutes les fonctionnalités du site d'origine avec un nouveau design et un code réorganisé et sécurisé.
+Site de location de voitures en PHP 8.2 et MySQL 8.4, déployé avec **Docker Compose** sur une VM Ubuntu Server.
+Ce dépôt fait partie de mon lab d'apprentissage des infrastructures cloud : virtualisation, réseau Linux, conteneurs, puis Kubernetes et supervision.
 
-## Installation avec XAMPP
+## Architecture
 
-1. Copiez le dossier `agence-premium` dans `C:\xampp\htdocs\`.
-2. Dans le panneau XAMPP, démarrez **Apache** et **MySQL**.
-3. Ouvrez <http://localhost/agence-premium/public/>.
+```mermaid
+flowchart LR
+    U[Navigateur] -->|HTTP :8081| N[nginx<br>reverse proxy]
+    N -->|FastCGI :9000| P[PHP-FPM 8.2<br>application]
+    P -->|SQL :3306| M[(MySQL 8.4)]
+    N --- V[(volume uploads)]
+    P --- V
+    M --- D[(volume db_data)]
+```
 
-Au premier affichage, le site crée tout seul la base `mohamed_tayeb_agency_premium` et ses données de démonstration.
-L'ancienne base `mohamed_tayeb_zerarga_agency` n'est pas touchée : les deux versions peuvent coexister.
+| Service | Image | Rôle |
+| --- | --- | --- |
+| `web` | `nginx:stable-alpine` | Seul point d'entrée : sert les fichiers statiques et transmet le PHP |
+| `app` | construite depuis le `Dockerfile` | Exécute le code PHP |
+| `db` | `mysql:8.4` | Base de données, non exposée à l'extérieur |
 
-Pour repartir de zéro, supprimez la base `mohamed_tayeb_agency_premium` dans phpMyAdmin, puis rechargez la page.
+Points clés :
+- les conteneurs communiquent par **nom de service** grâce au DNS interne de Docker ;
+- PHP ne démarre qu'une fois MySQL **réellement prêt**, grâce au `healthcheck` ;
+- les données et les photos sont dans des **volumes** : elles survivent à la suppression des conteneurs ;
+- le mot de passe est fourni par **variable d'environnement**, jamais écrit dans le code ;
+- seul le dossier `public/` est servi par nginx ; la page `?page=health` sert de sonde de santé.
+
+## Lancer le projet
+
+Prérequis : Docker et Docker Compose.
+
+```bash
+git clone git@github.com:MTzerarga300/agence-location-cloud.git
+cd agence-location-cloud
+cp .env.example .env    # puis choisissez un mot de passe dans .env
+docker compose up -d --build
+docker compose ps       # attendre que db soit "healthy"
+```
+
+Le site est ensuite disponible sur `http://localhost:8081`.
+Au premier accès, l'application crée ses tables et des données de démonstration.
 
 ## Comptes de démonstration
 
@@ -27,47 +56,27 @@ Pour repartir de zéro, supprimez la base `mohamed_tayeb_agency_premium` dans ph
 ## Organisation du code
 
 ```
-agence-premium/
-├── public/                 seul dossier exposé par le serveur web
-│   ├── index.php           point d'entrée : session, sécurité, choix de la page
-│   ├── assets/             app.css, app.js, images
-│   └── uploads/cars/       photos envoyées par les agences
-├── src/
-│   ├── config.php          configuration (variables d'environnement)
-│   ├── database.php        connexion, requêtes préparées, installation
-│   ├── helpers.php         formats, messages, CSRF, authentification, photos
-│   └── layout.php          gabarits HTML et composants partagés
-└── pages/                  une page par fichier
-    ├── home.php            accueil public
-    ├── staff-login.php     connexion du personnel
-    ├── client-login.php    connexion et inscription des clients
-    ├── client.php          espace client
-    ├── agent.php           espace agence
-    ├── mechanic.php        espace atelier
-    └── admin.php           espace administrateur
+public/       seul dossier exposé : point d'entrée, CSS, JavaScript, photos
+src/          configuration, base de données, fonctions communes, gabarits
+pages/        une page par fichier (accueil, connexions, 4 tableaux de bord)
+nginx/        configuration du reverse proxy
+Dockerfile    image de l'application PHP
+docker-compose.yml
 ```
 
-## Ce qui a changé par rapport à la version d'origine
+## Sécurité
 
-**Design** : thème sombre « pétrole et laiton », plaques d'immatriculation dessinées, flotte filtrable par agence, récapitulatif de réservation calculé en direct, tableaux de bord avec barre latérale, affichage adapté au téléphone.
+- Requêtes SQL préparées, protection CSRF sur tous les formulaires.
+- Mots de passe hachés, identifiant de session renouvelé à la connexion.
+- Photos envoyées contrôlées (vrai fichier image, 5 Mo maximum).
+- `.env` exclu de Git et de l'image Docker (`.gitignore`, `.dockerignore`).
 
-**Corrections de sécurité**
-- Toutes les requêtes SQL sont préparées : plus de risque d'injection SQL.
-- Les mots de passe ne sont plus écrits dans les journaux (`error_log`).
-- La connexion vérifie toujours le mot de passe en base : plus de connexion « en dur » pour l'admin et les comptes de test.
-- Protection CSRF sur tous les formulaires.
-- Identifiant de session renouvelé à chaque connexion ; un compte bloqué est déconnecté immédiatement.
-- Les photos envoyées sont contrôlées (vrai fichier image, 5 Mo maximum).
+## Feuille de route du lab
 
-**Corrections de fonctionnement**
-- La base n'est plus recréée ni modifiée à chaque visite : un changement de mot de passe est désormais conservé.
-- Le mode de paiement choisi par le client (espèces ou CCP) est enregistré.
-- Une voiture ne peut plus être réservée deux fois sur les mêmes dates.
-- Chaque agence ne voit que ses propres clients.
-- Le mécanicien peut changer son mot de passe (la section manquait).
-- Le client peut annuler une réservation tant qu'elle n'est pas payée.
-
-## Utilisation avec Docker
-
-La configuration se lit dans les variables d'environnement `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` et `DB_NAME`, avec les valeurs de XAMPP par défaut.
-La page `?page=health` renvoie `{"status":"ok"}` quand la base répond : elle peut servir de sonde de santé pour Docker ou Kubernetes.
+- [x] VM Ubuntu Server sous VirtualBox, accès SSH par clé
+- [x] Réseau Linux, pare-feu, premiers conteneurs
+- [x] Application en trois conteneurs avec Docker Compose
+- [x] Publication sur GitHub
+- [ ] Déploiement sur Kubernetes (k3s)
+- [ ] Supervision avec Prometheus et Grafana
+- [ ] Intégration continue avec GitHub Actions
