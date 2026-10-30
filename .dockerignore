@@ -2,3 +2,4 @@
 docker-compose.yml
 nginx
 *.zip
+k8s

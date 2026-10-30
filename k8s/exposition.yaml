@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agence-web
+  namespace: agence
+  annotations:
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+spec:
+  selector:
+    app: agence
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agence
+  namespace: agence
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agence-web
+                port:
+                  number: 80
